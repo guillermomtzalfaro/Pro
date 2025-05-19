@@ -87,7 +87,7 @@ def clasificacion_documentos(bucket, key):
     inf_config = {"maxTokens": 5000, "temperature": 0.1}
 
     response = bedrock.converse(
-        modelId="us.amazon.nova-lite-v1:0",
+        modelId="us.amazon.nova-pro-v1:0", 
         messages=messages,
         inferenceConfig=inf_config
     )
