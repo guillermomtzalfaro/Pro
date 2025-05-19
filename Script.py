@@ -44,11 +44,63 @@ print(f"[{execution_id}] Iniciando procesamiento para {key}")
 s3.download_file(bucket, key, local_pdf_path)
 print(f"[{execution_id}] PDF descargado desde S3")
 
+
+def analizar_primeras_5_paginas(file_bytes):
+    """
+    Analiza solo las primeras 5 páginas de un PDF a partir de bytes,
+    pero solo si el PDF tiene más de 5 páginas
+    
+    Args:
+        file_bytes (bytes): Contenido del PDF en bytes
+        
+    Returns:
+        bytes: Contenido modificado o el original si tiene 5 páginas o menos
+    """
+    try:
+        # Crear un objeto BytesIO para trabajar con los bytes en memoria
+        pdf_stream = io.BytesIO(file_bytes)
+        
+        # Abrir el PDF con PyMuPDF
+        pdf_document = fitz.open(stream=pdf_stream, filetype="pdf")
+        
+        # Verificar si el PDF tiene más de 5 páginas
+        if pdf_document.page_count <= 5:
+            pdf_document.close()
+            return file_bytes  # Devolver los bytes originales sin modificar
+        
+        # Si tiene más de 5 páginas, crear un nuevo documento con solo las primeras 5
+        nuevo_pdf = fitz.open()
+        
+        # Copiar solo las primeras 5 páginas al nuevo documento
+        for page_num in range(5):  # Siempre serán 5 páginas en este caso
+            nuevo_pdf.insert_pdf(pdf_document, from_page=page_num, to_page=page_num)
+        
+        # Convertir el nuevo PDF a bytes
+        output_stream = io.BytesIO()
+        nuevo_pdf.save(output_stream)
+        nuevo_pdf.close()
+        pdf_document.close()
+        
+        # Obtener los bytes del nuevo PDF
+        nuevos_bytes = output_stream.getvalue()
+        
+        return nuevos_bytes
+        
+    except Exception as e:
+        print(f"Error al procesar el PDF: {str(e)}")
+        # Si hay un error, devolver los bytes originales
+        return file_bytes
+
 # Clasificación documental con Bedrock
 def clasificacion_documentos(bucket, key):
     file_extension = key.split('.')[-1].lower()
     response = s3.get_object(Bucket=bucket, Key=key)
     file_bytes = response['Body'].read()
+
+    # Si es un PDF, verificar si necesita ser recortado
+    if file_extension.lower() == 'pdf':
+        # Solo se procesará si tiene más de 5 páginas
+        file_bytes = analizar_primeras_5_paginas(file_bytes)
 
     messages = [{
         "role": "user",
@@ -253,7 +305,7 @@ if "tipoDocumento" in tipo_doc:
     else:
         docu = fitz.open(local_pdf_path)
         # Guardar en memoria y subir
-        numero_de_paginas = docu.page_count
+        numero_de_paginas = docu.page_count      
         pdf_buffer = io.BytesIO()
         docu.save(pdf_buffer)
         pdf_buffer.seek(0)
